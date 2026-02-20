@@ -3,17 +3,22 @@ Healthcare Data Generation Module
 Generates synthetic data for medallion architecture layers.
 """
 
-import pandas as pd
 import numpy as np
 import random
 from faker import Faker
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Tuple
 import typer
 from dataclasses import dataclass
+from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType, DateType, DoubleType
+)
 
 app = typer.Typer()
+
+
 
 
 @dataclass
@@ -29,29 +34,39 @@ class DataGeneratorConfig:
     start_date: datetime = datetime(2019, 1, 1)
     end_date: datetime = datetime(2024, 12, 31)
     random_seed: int = 42
-    output_dir: Path = Path(".")
+    output_dir: Path = Path("/Volumes/workspace/default/landing_zone")
 
 
 class DateDimensionGenerator:
     """Generates date dimension table."""
 
-    def __init__(self, start_date: datetime, end_date: datetime):
+    def __init__(self, start_date: datetime, end_date: datetime, spark):
         self.start_date = start_date
         self.end_date = end_date
+        self.spark = spark
 
-    def generate(self) -> pd.DataFrame:
+    def generate(self):
         """Generate date dimension."""
-        dates = pd.date_range(self.start_date, self.end_date)
-        df = pd.DataFrame({
-            "date_key": dates.strftime("%Y%m%d").astype(int),
-            "date": dates,
-            "year": dates.year,
-            "quarter": dates.quarter,
-            "month": dates.month,
-            "day": dates.day,
-            "week": dates.isocalendar().week
-        })
-        return df
+        dates = [self.start_date + timedelta(days=i) for i in range((self.end_date - self.start_date).days + 1)]
+        rows = [{
+            "date_key": int(date.strftime("%Y%m%d")),
+            "date": date,
+            "year": date.year,
+            "quarter": ((date.month - 1) // 3) + 1,
+            "month": date.month,
+            "day": date.day,
+            "week": date.isocalendar()[1]
+        } for date in dates]
+        schema = StructType([
+            StructField("date_key", IntegerType(), False),
+            StructField("date", DateType(), False),
+            StructField("year", IntegerType(), False),
+            StructField("quarter", IntegerType(), False),
+            StructField("month", IntegerType(), False),
+            StructField("day", IntegerType(), False),
+            StructField("week", IntegerType(), False)
+        ])
+        return self.spark.createDataFrame(rows, schema=schema)
 
 
 class PatientDimensionGenerator:
@@ -62,7 +77,7 @@ class PatientDimensionGenerator:
         self.start_date = start_date
         self.fake = Faker()
 
-    def generate(self) -> pd.DataFrame:
+    def generate(self):
         """Generate patient dimension."""
         data = []
         for i in range(self.num_patients):
@@ -80,7 +95,21 @@ class PatientDimensionGenerator:
                 "effective_to": None,
                 "is_current": 1
             })
-        return pd.DataFrame(data)
+        schema = StructType([
+            StructField("patient_key", IntegerType(), False),
+            StructField("patient_id", StringType(), False),
+            StructField("first_name", StringType(), False),
+            StructField("last_name", StringType(), False),
+            StructField("gender", StringType(), False),
+            StructField("birth_date", DateType(), False),
+            StructField("city", StringType(), False),
+            StructField("state", StringType(), False),
+            StructField("zip", StringType(), False),
+            StructField("effective_from", DateType(), False),
+            StructField("effective_to", DateType(), True),
+            StructField("is_current", IntegerType(), False)
+        ])
+        return spark.createDataFrame(data, schema=schema)
 
 
 class ProviderDimensionGenerator:
@@ -97,7 +126,7 @@ class ProviderDimensionGenerator:
         self.start_date = start_date
         self.fake = Faker()
 
-    def generate(self) -> pd.DataFrame:
+    def generate(self):
         """Generate provider dimension."""
         data = []
         for i in range(self.num_providers):
@@ -111,7 +140,17 @@ class ProviderDimensionGenerator:
                 "effective_to": None,
                 "is_current": 1
             })
-        return pd.DataFrame(data)
+        schema = StructType([
+            StructField("provider_key", IntegerType(), False),
+            StructField("provider_id", StringType(), False),
+            StructField("provider_name", StringType(), False),
+            StructField("specialty", StringType(), False),
+            StructField("department", StringType(), False),
+            StructField("effective_from", DateType(), False),
+            StructField("effective_to", DateType(), True),
+            StructField("is_current", IntegerType(), False)
+        ])
+        return spark.createDataFrame(data, schema=schema)
 
 
 class PayerDimensionGenerator:
@@ -122,7 +161,7 @@ class PayerDimensionGenerator:
     def __init__(self, num_payers: int):
         self.num_payers = num_payers
 
-    def generate(self) -> pd.DataFrame:
+    def generate(self):
         """Generate payer dimension."""
         data = []
         for i in range(self.num_payers):
@@ -131,7 +170,12 @@ class PayerDimensionGenerator:
                 "payer_name": f"Payer_{i+1}",
                 "payer_type": random.choice(self.PAYER_TYPES)
             })
-        return pd.DataFrame(data)
+        schema = StructType([
+            StructField("payer_key", IntegerType(), False),
+            StructField("payer_name", StringType(), False),
+            StructField("payer_type", StringType(), False)
+        ])
+        return spark.createDataFrame(data, schema=schema)
 
 
 class FacilityDimensionGenerator:
@@ -141,7 +185,7 @@ class FacilityDimensionGenerator:
         self.num_facilities = num_facilities
         self.fake = Faker()
 
-    def generate(self) -> pd.DataFrame:
+    def generate(self):
         """Generate facility dimension."""
         data = []
         for i in range(self.num_facilities):
@@ -152,7 +196,14 @@ class FacilityDimensionGenerator:
                 "state": self.fake.state(),
                 "bed_count": random.randint(50, 800)
             })
-        return pd.DataFrame(data)
+        schema = StructType([
+            StructField("facility_key", IntegerType(), False),
+            StructField("facility_name", StringType(), False),
+            StructField("city", StringType(), False),
+            StructField("state", StringType(), False),
+            StructField("bed_count", IntegerType(), False)
+        ])
+        return spark.createDataFrame(data, schema=schema)
 
 
 class CodeGenerator:
@@ -172,9 +223,8 @@ class CodeGenerator:
 class EncounterFactGenerator:
     """Generates encounter fact table."""
 
-    def __init__(self, config: DataGeneratorConfig, dim_patient: pd.DataFrame,
-                 dim_provider: pd.DataFrame, dim_facility: pd.DataFrame,
-                 dim_payer: pd.DataFrame):
+    def __init__(self, config: DataGeneratorConfig, dim_patient,
+                 dim_provider, dim_facility, dim_payer):
         self.config = config
         self.dim_patient = dim_patient
         self.dim_provider = dim_provider
@@ -182,14 +232,15 @@ class EncounterFactGenerator:
         self.dim_payer = dim_payer
         self.fake = Faker()
 
-    def generate(self) -> Tuple[pd.DataFrame, list]:
+    def generate(self):
         """Generate encounter fact table and transaction rows."""
         encounter_rows = []
         transaction_rows = []
         encounter_key = 1
         transaction_key = 1
 
-        for _, patient in self.dim_patient.iterrows():
+        patients = self.dim_patient.collect()
+        for patient in patients:
             num_enc = random.randint(*self.config.encounters_per_patient)
             for _ in range(num_enc):
                 encounter_date = self.fake.date_between(
@@ -246,15 +297,36 @@ class EncounterFactGenerator:
                 transaction_key += 3
                 encounter_key += 1
 
-        return pd.DataFrame(encounter_rows), transaction_rows
+        encounter_schema = StructType([
+            StructField("encounter_key", IntegerType(), False),
+            StructField("patient_key", IntegerType(), False),
+            StructField("provider_key", IntegerType(), False),
+            StructField("facility_key", IntegerType(), False),
+            StructField("payer_key", IntegerType(), False),
+            StructField("date_key", IntegerType(), False),
+            StructField("drg_code", StringType(), False),
+            StructField("total_charge", DoubleType(), False),
+            StructField("total_allowed", DoubleType(), False),
+            StructField("total_paid", DoubleType(), False),
+            StructField("total_adjustment", DoubleType(), False)
+        ])
+        transaction_schema = StructType([
+            StructField("transaction_key", IntegerType(), False),
+            StructField("encounter_key", IntegerType(), False),
+            StructField("transaction_type", StringType(), False),
+            StructField("amount", DoubleType(), False),
+            StructField("date_key", IntegerType(), False)
+        ])
+        return spark.createDataFrame(encounter_rows, schema=encounter_schema), transaction_rows
 
 
 class HealthcareDataGenerator:
     """Main class for healthcare data generation."""
 
-    def __init__(self, config: DataGeneratorConfig):
+    def __init__(self, config: DataGeneratorConfig, spark):
         self.config = config
         self._set_random_seed()
+        self.spark = spark
 
     def _set_random_seed(self):
         """Set random seed for reproducibility."""
@@ -265,9 +337,17 @@ class HealthcareDataGenerator:
         """Generate all dimensions and fact tables."""
         typer.echo("🔄 Generating dimensions...")
 
+        # Get Spark session from Databricks context
+        global spark
+        try:
+            spark
+        except NameError:
+            from pyspark.sql import SparkSession
+            spark = SparkSession.builder.getOrCreate()
+
         # Generate dimensions
         dim_date = DateDimensionGenerator(
-            self.config.start_date, self.config.end_date
+            self.config.start_date, self.config.end_date, self.spark
         ).generate()
         dim_patient = PatientDimensionGenerator(
             self.config.num_patients, self.config.start_date
@@ -286,7 +366,14 @@ class HealthcareDataGenerator:
         fact_encounter, transaction_rows = EncounterFactGenerator(
             self.config, dim_patient, dim_provider, dim_facility, dim_payer
         ).generate()
-        fact_transaction = pd.DataFrame(transaction_rows)
+        transaction_schema = StructType([
+            StructField("transaction_key", IntegerType(), False),
+            StructField("encounter_key", IntegerType(), False),
+            StructField("transaction_type", StringType(), False),
+            StructField("amount", DoubleType(), False),
+            StructField("date_key", IntegerType(), False)
+        ])
+        fact_transaction = spark.createDataFrame(transaction_rows, schema=transaction_schema)
 
         return {
             "dim_date": dim_date,
@@ -303,13 +390,13 @@ class HealthcareDataGenerator:
         output_dir = self.config.output_dir / "data" / "bronze"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        data["fact_encounter"].to_parquet(output_dir / "bronze_fact_encounter.parquet")
-        data["fact_transaction"].to_parquet(output_dir / "bronze_fact_transaction.parquet")
-        data["dim_patient"].to_parquet(output_dir / "bronze_dim_patient.parquet")
-        data["dim_provider"].to_parquet(output_dir / "bronze_dim_provider.parquet")
-        data["dim_payer"].to_parquet(output_dir / "bronze_dim_payer.parquet")
-        data["dim_facility"].to_parquet(output_dir / "bronze_dim_facility.parquet")
-        data["dim_date"].to_parquet(output_dir / "bronze_dim_date.parquet")
+        data["fact_encounter"].write.mode("overwrite").parquet(str(output_dir / "bronze_fact_encounter.parquet"))
+        data["fact_transaction"].write.mode("overwrite").parquet(str(output_dir / "bronze_fact_transaction.parquet"))
+        data["dim_patient"].write.mode("overwrite").parquet(str(output_dir / "bronze_dim_patient.parquet"))
+        data["dim_provider"].write.mode("overwrite").parquet(str(output_dir / "bronze_dim_provider.parquet"))
+        data["dim_payer"].write.mode("overwrite").parquet(str(output_dir / "bronze_dim_payer.parquet"))
+        data["dim_facility"].write.mode("overwrite").parquet(str(output_dir / "bronze_dim_facility.parquet"))
+        data["dim_date"].write.mode("overwrite").parquet(str(output_dir / "bronze_dim_date.parquet"))
 
         typer.echo(f"✅ Bronze layer saved to {output_dir}")
 
@@ -318,8 +405,8 @@ class HealthcareDataGenerator:
         output_dir = self.config.output_dir / "data" / "silver"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        data["fact_encounter"].to_parquet(output_dir / "silver_fact_encounter.parquet")
-        data["fact_transaction"].to_parquet(output_dir / "silver_fact_transaction.parquet")
+        data["fact_encounter"].write.mode("overwrite").parquet(str(output_dir / "silver_fact_encounter.parquet"))
+        data["fact_transaction"].write.mode("overwrite").parquet(str(output_dir / "silver_fact_transaction.parquet"))
 
         typer.echo(f"✅ Silver layer saved to {output_dir}")
 
@@ -327,22 +414,20 @@ class HealthcareDataGenerator:
         """Generate gold layer aggregations."""
         gold_provider_perf = (
             data["fact_encounter"]
-            .groupby("provider_key")
+            .groupBy("provider_key")
             .agg(
-                total_revenue=("total_paid", "sum"),
-                total_encounters=("encounter_key", "count")
+                sum("total_paid").alias("total_revenue"),
+                count("encounter_key").alias("total_encounters")
             )
-            .reset_index()
         )
 
         gold_payer_perf = (
             data["fact_encounter"]
-            .groupby("payer_key")
+            .groupBy("payer_key")
             .agg(
-                total_revenue=("total_paid", "sum"),
-                claim_count=("encounter_key", "count")
+                sum("total_paid").alias("total_revenue"),
+                count("encounter_key").alias("claim_count")
             )
-            .reset_index()
         )
 
         return {
@@ -355,11 +440,11 @@ class HealthcareDataGenerator:
         output_dir = self.config.output_dir / "data" / "gold"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        gold_data["provider_performance"].to_parquet(
-            output_dir / "gold_provider_performance.parquet"
+        gold_data["provider_performance"].write.mode("overwrite").parquet(
+            str(output_dir / "gold_provider_performance.parquet")
         )
-        gold_data["payer_performance"].to_parquet(
-            output_dir / "gold_payer_performance.parquet"
+        gold_data["payer_performance"].write.mode("overwrite").parquet(
+            str(output_dir / "gold_payer_performance.parquet")
         )
 
         typer.echo(f"✅ Gold layer saved to {output_dir}")
@@ -371,12 +456,14 @@ def generate(
     providers: int = typer.Option(2000, "--providers", "-pr", help="Number of providers"),
     facilities: int = typer.Option(100, "--facilities", "-f", help="Number of facilities"),
     payers: int = typer.Option(20, "--payers", "-py", help="Number of payers"),
-    output_path: str = typer.Option(".", "--output", "-o", help="Output directory"),
+    output_path: str = typer.Option("/Volumes/workspace/default/", "--output", "-o", help="Output directory"),
     all_layers: bool = typer.Option(True, "--all-layers", "-a", help="Generate all layers"),
     bronze_only: bool = typer.Option(False, "--bronze", "-b", help="Bronze layer only"),
     silver_only: bool = typer.Option(False, "--silver", "-s", help="Silver layer only"),
 ):
     """Generate synthetic healthcare data for all medallion layers."""
+    spark = SparkSession.builder.getOrCreate()
+
     config = DataGeneratorConfig(
         num_patients=patients,
         num_providers=providers,
@@ -385,7 +472,7 @@ def generate(
         output_dir=Path(output_path)
     )
 
-    generator = HealthcareDataGenerator(config)
+    generator = HealthcareDataGenerator(config, spark)
     data = generator.generate_all()
 
     if bronze_only or all_layers:
@@ -399,7 +486,7 @@ def generate(
         generator.save_to_gold(gold_data)
 
     typer.echo("✨ Healthcare data generation complete!")
-    typer.echo(f"📊 Generated {patients} patients with {len(data['fact_encounter'])} encounters")
+    typer.echo(f"📊 Generated {patients} patients with {data['fact_encounter'].count()} encounters")
 
 
 @app.command()
