@@ -1,0 +1,16 @@
+# Global Settings for Data Analytics Pipeline
+# Configure database connections, paths, and pipeline parameters
+
+database:
+  host: localhost
+  port: 5432
+  name: analytics_db
+
+paths:
+  bronze: ./data/bronze
+  silver: ./data/silver
+  gold: ./data/gold
+
+logging:
+  level: INFO
+  format: json
