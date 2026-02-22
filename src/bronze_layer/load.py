@@ -1,5 +1,5 @@
 """Orchestration helpers for bronze ingestion."""
-from databricks.connect import DatabricksSession
+from pyspark.sql import SparkSession
 import typer
 from .utils import create_bronze_table
 from pyspark.sql.utils import AnalysisException
@@ -15,7 +15,7 @@ class LoadBronze:
         self.mode = mode
 
 
-    def read(self, table: str, spark: DatabricksSession):
+    def read(self, table: str, spark: SparkSession):
         """Ingest files from landing to bronze."""
         # Here you would implement the logic to copy files from landing to bronze
         try: 
@@ -27,7 +27,7 @@ class LoadBronze:
             raise Exception(f"Error reading {table}: {e}")
 
 
-    def load(self, table: str, raw_df, spark: DatabricksSession):
+    def load(self, table: str, raw_df, spark: SparkSession):
         """Load a specific table into the bronze layer."""
         # Here you would implement the logic to load a specific table
         try:
@@ -47,7 +47,7 @@ class LoadBronze:
 
     def execute(self, all: bool = False, table: str = None):
         """Execute the loading process based on the provided options."""
-        spark = DatabricksSession.builder.getOrCreate()
+        spark = SparkSession.builder.getOrCreate()
         if self.all_tables:
             # Load all tables
             for t in TABLES:

@@ -2,13 +2,13 @@
 from pathlib import Path
 from typing import List
 import typer 
-from databricks.connect import DatabricksSession
+from pyspark.sql import SparkSession
 
 app = typer.Typer()
 
 def create_bronze_table(all: bool = False, table: str = None):  
     """Create tables in the bronze layer based on provided options."""
-    spark = DatabricksSession.builder.getOrCreate()
+    spark = SparkSession.builder.getOrCreate()
     if all:
         typer.echo("Creating all bronze tables...")
         for ddl in Path(__file__).parent.joinpath("schemas").glob("*.sql"):

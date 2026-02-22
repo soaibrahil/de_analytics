@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 import typer
 from dataclasses import dataclass
-from databricks.connect import DatabricksSession
+from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     StructType, StructField, IntegerType, StringType, DateType, DoubleType
 )
@@ -342,8 +342,8 @@ class HealthcareDataGenerator:
         try:
             spark
         except NameError:
-            from pyspark.sql import DatabricksSession
-            spark = DatabricksSession.builder.getOrCreate()
+            from pyspark.sql import SparkSession
+            spark = SparkSession.builder.getOrCreate()
 
         # Generate dimensions
         dim_date = DateDimensionGenerator(
@@ -462,7 +462,7 @@ def generate(
     silver_only: bool = typer.Option(False, "--silver", "-s", help="Silver layer only"),
 ):
     """Generate synthetic healthcare data for all medallion layers."""
-    spark = DatabricksSession.builder.getOrCreate()
+    spark = SparkSession.builder.getOrCreate()
 
     config = DataGeneratorConfig(
         num_patients=patients,
