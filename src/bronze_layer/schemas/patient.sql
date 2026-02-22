@@ -1,0 +1,1 @@
+CREATE OR REPLACE TABLE bronze.patient ( patient_key INT, patient_id STRING, first_name STRING, last_name STRING, gender STRING, birth_date DATE, city STRING, state STRING, zip STRING, effective_from DATE, effective_to DATE, is_current BOOLEAN, load_date TIMESTAMP , file_name STRING) USING DELTA;

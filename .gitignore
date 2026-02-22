@@ -31,6 +31,8 @@ wheels/
 .installed.cfg
 *.egg
 etl/
+typings/
+databricks.yml
 
 # IDE
 .vscode/
@@ -48,3 +50,8 @@ etl/
 # OS
 .DS_Store
 Thumbs.db
+
+.databricks
+
+# env
+local.env.json

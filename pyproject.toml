@@ -41,6 +41,7 @@ dependencies = [
     "click>=8.1.7",
     "typer>=0.9.0",
     "pre-commit>=3.5.0",
+    "pyspark>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +58,7 @@ dev = [
 
 [project.scripts]
 datagen = "src.utils.generate_data:app"
+load = "src.command:app"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/de_analytics"
